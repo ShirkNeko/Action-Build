@@ -296,11 +296,7 @@ jobs:
               echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$CONFIG_FILE"
             fi
 
-
             if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "6.6" ] && [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
-              if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.15" ]; then
-                sed -i 's/CONFIG_MODULE_SIG=y/CONFIG_MODULE_SIG=n/g' "$CONFIG_FILE"
-              fi
               if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE"; then
                 sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE"
               else
@@ -317,11 +313,12 @@ jobs:
             if [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android14" ] || [ "${{ github.event.inputs.ANDROID_VERSION }}" = "android15" ]; then
               if [  -e ./common/modules.bzl ]; then
                 sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "./common/modules.bzl"
+                sed -i '/^_ARM64_GKI_MODULES_LIST = \[/a \    "lib/zstdn/crypto_zstdn.ko",' "./common/modules.bzl"
               fi
               echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE"
-            elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.15" ]; then
+            elif [ "${{ inputs.kernel_version }}" = "5.10" ] || [ "${{ inputs.kernel_version }}" = "5.15" ]; then
               rm "./common/android/gki_aarch64_modules"
-              touch "./common/android/gki_aarch64_modules"
+              echo 'lib/zstdn/crypto_zstdn.ko' > ./common/android/gki_aarch64_modules
             fi
 
             if grep -q "CONFIG_ZSMALLOC=y" "$CONFIG_FILE" && grep -q "CONFIG_ZRAM=y" "$CONFIG_FILE"; then
@@ -344,16 +341,18 @@ jobs:
         if: ${{ github.event.inputs.CPU != 'sm8650' && github.event.inputs.CPU != 'sm7675' }}
         run: |
          cd kernel_workspace
-         LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
+         LTO=thin SYSTEM_DLKM_RE_SIGN=0 BUILD_SYSTEM_DLKM=0 KMI_SYMBOL_LIST_STRICT_MODE=0 ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
 
       - name: Make AnyKernel3
         run: |
           git clone https://github.com/Numbersf/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
 
-          dir1="./kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/dist/"
-          dir2="./kernel_workspace/kernel_platform/common/out/arch/arm64/boot/"
-          dir3="./kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/dist/"
+          dir1="kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/dist/"
+          dir2="kernel_workspace/kernel_platform/bazel-out/k8-fastbuild/bin/msm-kernel/${{ github.event.inputs.CPUD }}_gki_kbuild_mixed_tree/"
+          dir3="kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/dist/"
+          dir4="kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/gki_kernel/common/arch/arm64/boot/"
+          dir5="kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.BUILD_METHOD }}/gki_kernel/common/arch/arm64/boot/"
           target1="./AnyKernel3/"
           target2="./kernel_workspace/kernel"
 
@@ -364,6 +363,10 @@ jobs:
             image_path="$dir2"Image
           elif find "$dir3" -name "Image" | grep -q "Image"; then
             image_path="$dir3"Image
+          elif find "$dir4" -name "Image" | grep -q "Image"; then
+            image_path="$dir4"Image
+          elif find "$dir5" -name "Image" | grep -q "Image"; then
+            image_path="$dir5"Image
           else
             image_path=$(find "./kernel_workspace/kernel_platform/common/out/" -name "Image" | head -n 1)
           fi
